@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>研究用 英単語テストアプリ</title>
+    <style>
+        :root {
+            --primary: #4A90E2;
+            --primary-dark: #357ABD;
+            --success: #2ECC71;
+            --danger: #E74C3C;
+            --bg: #F5F7FA;
+            --text: #2C3E50;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        body {
+            background-color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* スマートフォン風の縦長コンテナ */
+        #app-container {
+            width: 100%;
+            max-width: 480px;
+            height: 100vh;
+            max-height: 850px;
+            background-color: var(--bg);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-radius: 12px;
+        }
+
+        /* 共通ヘッダー */
+        .app-header {
+            background-color: white;
+            padding: 15px;
+            border-bottom: 1px solid #E1E8ED;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .btn-header {
+            background: #eee;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        /* 画面エリア */
+        .screen {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        /* タイトル画面 */
+        #screen-title {
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .app-title {
+            font-size: 24px;
+            color: var(--text);
+            margin-bottom: 50px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .btn-start {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4);
+            animation: pulse 2s infinite;
+            transition: background-color 0.2s;
+        }
+
+        .btn-start:disabled {
+            background-color: #BDC3C7;
+            box-shadow: none;
+            animation: none;
+            cursor: not-allowed;
+        }
+
+        .user-id-badge {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #7F8C8D;
+            background: #E1E8ED;
+            padding: 6px 12px;
+            border-radius: 15px;
+        }
+
+        /* スタート画面 */
+        #screen-start-menu {
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .menu-btn {
+            background-color: white;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+            padding: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .menu-btn:hover {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        /* 単語一覧 */
+        .word-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 12px;
+            border: 1px solid #E1E8ED;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+        }
+
+        .word-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .word-eng {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .word-trans {
+            font-size: 14px;
+            color: var(--text);
+        }
+
+        .word-ex {
+            font-size: 12px;
+            color: #7F8C8D;
+            margin-top: 4px;
+            font-style: italic;
+        }
+
+        .word-ex-trans {
+            font-size: 12px;
+            color: #95A5A6;
+        }
+
+        /* メディア列 */
+        .word-media {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 80px;
+        }
+
+        .media-image {
+            max-width: 80px;
+            max-height: 80px;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .btn-audio {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: var(--primary);
+            border: none;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        /* 練習 & テスト問題 */
+        .question-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #E1E8ED;
+            margin-bottom: 20px;
+        }
+
+        .question-text {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+        }
+
+        .options-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .option-btn {
+            background: #F8F9FA;
+            border: 1px solid #D1D5DB;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: left;
+            font-size: 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .option-btn:hover {
+            background: #E5E7EB;
+        }
+
+        .input-write {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #D1D5DB;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+
+        /* ポップアップ警告 (残り1分) */
+        #toast-warning {
+            position: absolute;
+            top: -60px;
+            left: 0;
+            width: 100%;
+            background-color: var(--danger);
+            color: white;
+            text-align: center;
+            padding: 12px;
+            font-weight: bold;
+            z-index: 1000;
+            transition: top 0.4s ease;
+        }
+
+        #toast-warning.show {
+            top: 0;
+        }
+
+        /* オフラインオーバーレイ */
+        #offline-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* 練習のフィードバックエリア */
+        .feedback-container {
+            background: #FFF;
+            border-radius: 10px;
+            padding: 15px;
+            border: 2px solid;
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .feedback-correct { border-color: var(--success); color: var(--success); }
+        .feedback-wrong { border-color: var(--danger); color: var(--danger); }
+
+        .explanation-media {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* アニメーション */
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 4px 15 rgba(74, 144, 226, 0.4); }
+            50% { transform: scale(1.05); box-shadow: 0 4px 25px rgba(74, 144, 226, 0.6); }
+            100% { transform: scale(1); box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <!-- 残り1分警告用トースト -->
+    <div id="toast-warning">⚠️ 勉強時間は残り1分です！</div>
+
+    <!-- オフライン強制遮断画面 -->
+    <div id="offline-overlay">
+        <h2>🛜 ネットワーク未接続</h2>
+        <p style="margin-top: 10px;">インターネット接続が切断されました。復帰するまでお待ちください。</p>
+    </div>
+
+    <!-- ① タイトル画面 (自動ログイン表示用) -->
+    <div id="screen-title" class="screen active">
+        <h1 class="app-title">研究用<br>英単語テストアプリ</h1>
+        <button id="btn-start-app" class="btn-start" onclick="initApp()">ログイン</button>
+        <div id="user-id-display" class="user-id-badge">ID: 生成中...</div>
+    </div>
+
+    <!-- ② スタート画面 (練習 or テスト・単語一覧選択) -->
+    <div id="screen-start-menu" class="screen">
+        <div class="app-header">
+            <button class="btn-header" onclick="goToTitle()">ログアウト</button>
+            <div id="timer-display" style="color: var(--danger); font-size: 16px;">残り時間: --:--</div>
+        </div>
+        <button id="btn-start-action" class="menu-btn" style="margin-top: 40px;" onclick="startMainAction()">読み込み中...</button>
+        <button class="menu-btn" onclick="showWordList()">単語一覧</button>
+    </div>
+
+    <!-- ③ 単語一覧画面 -->
+    <div id="screen-word-list" class="screen">
+        <div class="app-header">
+            <button class="btn-header" onclick="goBackToMenu()">戻る</button>
+            <div>単語一覧</div>
+        </div>
+        <div id="word-list-container" style="flex: 1; overflow-y: auto; margin-top: 15px;">
+            <!-- 動的に単語リストが挿入されます -->
+        </div>
+    </div>
+
+    <!-- ④ 練習画面 -->
+    <div id="screen-practice" class="screen">
+        <div class="app-header">
+            <button class="btn-header" onclick="quitPractice()">練習をやめる</button>
+            <div id="practice-timer" style="color: var(--danger);">--:--</div>
+        </div>
+        <div id="practice-area" style="margin-top: 15px;">
+            <!-- 問題エリア -->
+        </div>
+    </div>
+
+    <!-- ⑤ テスト画面 -->
+    <div id="screen-test" class="screen">
+        <div class="app-header">
+            <div>本番テスト</div>
+            <div id="test-timer" style="color: var(--danger);">--:--</div>
+        </div>
+        <div id="test-area" style="margin-top: 15px;">
+            <!-- テスト問題エリア -->
+        </div>
+    </div>
+</div>
+
+<script>
+    // =========================================================================
+    // フロントエンド設定
+    // =========================================================================
+    const GAS_API_URL = "YOUR_GAS_WEB_APP_URL_HERE"; // デプロイしたGASのURLを設定
+
+    // アプリ状態
+    let userId = "";
+    let userTeam = "C"; // A, B, C
+    let wordsData = [];
+    let testInfo = null;
+    let filteredWords = []; // スケジュール範囲内の単語
+
+    // タイマー・学習状況管理
+    let studyTimer = null;
+    let timeLeft = 600; // 10分 (600秒)
+    let practiceCount = 0;
+    let practiceCorrect = 0;
+    let activeScreen = "title";
+
+    // -------------------------------------------------------------------------
+    // 起動時処理：localStorageによる自動ログイン
+    // -------------------------------------------------------------------------
+    window.onload = function() {
+        updateOnlineStatus(); // ネットワークの初期チェック
+
+        // localStorageからID取得。なければランダム生成
+        let storedId = localStorage.getItem("word_app_user_id");
+        if (!storedId) {
+            storedId = "usr_" + Math.random().toString(36).substring(2, 10) + "_" + Date.now().toString().slice(-4);
+            localStorage.setItem("word_app_user_id", storedId);
+        }
+        userId = storedId;
+        document.getElementById("user-id-display").innerText = "ID: " + userId;
+
+        // オンラインかつIDが存在すれば、自動でログイン処理を走らせる
+        if (navigator.onLine) {
+            initApp();
+        }
+    };
+
+    // -------------------------------------------------------------------------
+    // ネットワーク接続状態の監視
+    // -------------------------------------------------------------------------
+    function updateOnlineStatus() {
+        const overlay = document.getElementById("offline-overlay");
+        const startBtn = document.getElementById("btn-start-app");
+        if (navigator.onLine) {
+            overlay.style.display = "none";
+            startBtn.disabled = false;
+        } else {
+            overlay.style.display = "flex";
+            startBtn.disabled = true;
+            goToTitle(); // 強制的にタイトル画面に戻す
+        }
+    }
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
+    // -------------------------------------------------------------------------
+    // 画面遷移管理
+    // -------------------------------------------------------------------------
+    function changeScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+        activeScreen = screenId;
+    }
+
+    // -------------------------------------------------------------------------
+    // タイマー処理 (10分制限)
+    // -------------------------------------------------------------------------
+    function startStudyTimer() {
+        if (studyTimer) clearInterval(studyTimer);
+        timeLeft = 600; // 10分
+        updateTimerUI();
+
+        studyTimer = setInterval(() => {
+            timeLeft--;
+            updateTimerUI();
+
+            // 残り1分前 (60秒) の警告表示
+            if (timeLeft === 60) {
+                const toast = document.getElementById("toast-warning");
+                toast.classList.add("show");
+                setTimeout(() => toast.classList.remove("show"), 5000); // 5秒後に自動消去
+            }
+
+            if (timeLeft <= 0) {
+                clearInterval(studyTimer);
+                alert("10分間の学習・テスト時間が終了しました。強制終了します。");
+                if (activeScreen === "screen-test") {
+                    submitTestAnswers(); // テスト中なら強制送信
+                } else {
+                    finishStudySession(); // 練習中なら学習結果のみ送信
+                }
+            }
+        }, 1000);
+    }
+
+    function updateTimerUI() {
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        const timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        
+        document.getElementById("timer-display").innerText = "残り時間: " + timeStr;
+        document.getElementById("practice-timer").innerText = timeStr;
+        document.getElementById("test-timer").innerText = timeStr;
+    }
+
+    // -------------------------------------------------------------------------
+    // アプリ初期化 ＆ サーバー接続
+    // -------------------------------------------------------------------------
+    async function initApp() {
+        const startBtn = document.getElementById("btn-start-app");
+        startBtn.disabled = true;
+        startBtn.innerText = "データ取得中...";
+
+        try {
+            const response = await fetch(GAS_API_URL, {
+                method: "POST",
+                body: JSON.stringify({ action: "getData", userId: userId })
+            });
+            const res = await response.json();
+            
+            if (res.success) {
+                userTeam = res.data.team;
+                wordsData = res.data.words;
+                testInfo = res.data.testInfo;
+                
+                // 開始・終了単語Noに基づきフィルター
+                const start = (testInfo.startWordNo - 1) >= 0 ? (testInfo.startWordNo - 1) : 0;
+                const end = testInfo.endWordNo;
+                filteredWords = wordsData.slice(start, end);
+
+                setupMainMenuButton();
+                changeScreen("screen-start-menu");
+                startStudyTimer();
+            } else {
+                alert("データの取得に失敗しました: " + res.error);
+            }
+        } catch (err) {
+            console.log("通信エラーが発生しました。GASの公開状態(URL)を再確認してください。");
+        } finally {
+            startBtn.disabled = false;
+            startBtn.innerText = "ログイン";
+        }
+    }
+
+    function setupMainMenuButton() {
+        const actionBtn = document.getElementById("btn-start-action");
+        const now = new Date();
+        
+        const testStart = testInfo.testStartTime ? new Date(testInfo.testStartTime.replace(/-/g, "/")) : null;
+        const testEnd = testInfo.testEndTime ? new Date(testInfo.testEndTime.replace(/-/g, "/")) : null;
+
+        // 現在時刻がテストスケジュールの時間内の場合は「テスト開始」を表示
+        if (testStart && testEnd && now >= testStart && now <= testEnd) {
+            actionBtn.innerText = "テスト開始";
+            actionBtn.dataset.mode = "test";
+        } else {
+            actionBtn.innerText = "練習開始";
+            actionBtn.dataset.mode = "practice";
+        }
+    }
+
+    function startMainAction() {
+        const mode = document.getElementById("btn-start-action").dataset.mode;
+        if (mode === "test") {
+            initTest();
+        } else {
+            initPractice();
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // 単語一覧画面の制御
+    // -------------------------------------------------------------------------
+    function showWordList() {
+        const container = document.getElementById("word-list-container");
+        container.innerHTML = "";
+
+        filteredWords.forEach(w => {
+            const item = document.createElement("div");
+            item.className = "word-item";
+            
+            let mediaHtml = "";
+            if (userTeam === "A") {
+                mediaHtml = `<div class="word-media"><img src="${w.imageUrl || ''}" class="media-image" alt="イメージ"></div>`;
+            } else if (userTeam === "B") {
+                mediaHtml = `
+                    <div class="word-media">
+                        <button class="btn-audio" onclick="playAudio('${w.audioUrl}')">▶</button>
+                    </div>`;
+            }
+
+            item.innerHTML = `
+                <div class="word-info">
+                    <div class="word-eng">${w.word}</div>
+                    <div class="word-trans">${w.translation}</div>
+                    <div class="word-ex">${w.example}</div>
+                    <div class="word-ex-trans">${w.exampleTranslation}</div>
+                </div>
+                ${mediaHtml}
+            `;
+            container.appendChild(item);
+        });
+
+        changeScreen("screen-word-list");
+    }
+
+    function playAudio(url) {
+        if (!url) return;
+        const audio = new Audio(url);
+        audio.play().catch(e => console.log("音声再生エラー:", e));
+    }
+
+    // -------------------------------------------------------------------------
+    // 練習画面の制御（問題の自動作成）
+    // -------------------------------------------------------------------------
+    let currentPracticeQuestion = null;
+
+    function initPractice() {
+        changeScreen("screen-practice");
+        nextPractice();
+    }
+
+    function nextPractice() {
+        const area = document.getElementById("practice-area");
+        area.innerHTML = "";
+
+        // t=1~4の中からランダム選択
+        const t = Math.floor(Math.random() * 4) + 1;
+        currentPracticeQuestion = generateQuestion(t);
+
+        const qBox = document.createElement("div");
+        qBox.className = "question-box";
+        
+        let html = `<div class="question-text">${currentPracticeQuestion.q}</div>`;
+
+        if (t === 4) {
+            // 書き取り問題
+            html += `
+                <input type="text" id="practice-write-ans" class="input-write" placeholder="英語を入力してください">
+                <button class="btn-start" style="animation:none; width:100%; border-radius:6px;" onclick="checkPracticeAnswer(4)">解答する</button>
+            `;
+        } else {
+            // 選択肢問題 (1, 2, 3)
+            html += `<div class="options-container">`;
+            currentPracticeQuestion.s.forEach((opt, index) => {
+                html += `<button class="option-btn" onclick="checkPracticeAnswer(${index + 1})">${opt}</button>`;
+            });
+            html += `</div>`;
+        }
+
+        qBox.innerHTML = html;
+        area.appendChild(qBox);
+    }
+
+    // 問題生成ロジック
+    function generateQuestion(t) {
+        const targetWord = filteredWords[Math.floor(Math.random() * filteredWords.length)];
+        const dummyWords = filteredWords.filter(w => w.word !== targetWord.word);
+        
+        const shuffle = (array) => array.sort(() => Math.random() - 0.5);
+
+        let q = "";
+        let s = [];
+        let a = null;
+
+        if (t === 1) {
+            // 4択問題
+            q = `From the options below, answer the one that has the same meaning as '${targetWord.translation}'.`;
+            const options = shuffle([targetWord.word, ...dummyWords.slice(0, 3).map(w => w.word)]);
+            s = options;
+            a = options.indexOf(targetWord.word) + 1;
+        } 
+        else if (t === 2) {
+            // 並び替え問題
+            const cleanEx = targetWord.example.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
+            const wordsArr = cleanEx.split(/\s+/).filter(Boolean);
+            const wIdx = targetWord.wordIndex - 1; // 0ベース
+            
+            const length = Math.min(wordsArr.length, Math.floor(Math.random() * 3) + 5); 
+            let startIdx = Math.max(0, wIdx - Math.floor(length / 2));
+            if (startIdx + length > wordsArr.length) {
+                startIdx = Math.max(0, wordsArr.length - length);
+            }
+            const subWords = wordsArr.slice(startIdx, startIdx + length);
+            const originalSubWords = [...subWords];
+
+            const shuffled = shuffle([...subWords]);
+            
+            q = `Rearrange the following words and answer the numbers of the 2nd and 4th words.\n` + 
+                shuffled.map((w, i) => `${i+1}-${w}`).join("  ");
+            
+            s = shuffled;
+            
+            const secondWord = originalSubWords[1];
+            const fourthWord = originalSubWords[3];
+            a = [shuffled.indexOf(secondWord) + 1, shuffled.indexOf(fourthWord) + 1];
+        } 
+        else if (t === 3) {
+            // 例文の虫食い4択
+            const blankEx = targetWord.example.replace(new RegExp(`\\b${targetWord.word}\\b`, 'gi'), "(   )");
+            q = `${blankEx}\nWhat word goes in the blank?`;
+            const options = shuffle([targetWord.word, ...dummyWords.slice(0, 3).map(w => w.word)]);
+            s = options;
+            a = options.indexOf(targetWord.word) + 1;
+        } 
+        else if (t === 4) {
+            // 例文書き取り
+            const blankEx = targetWord.example.replace(new RegExp(`\\b${targetWord.word}\\b`, 'gi'), "(   )");
+            q = `${blankEx}\nType the word that goes in the blank.`;
+            s = [];
+            a = targetWord.word;
+        }
+
+        return { t, q, s, a, targetWord };
+    }
+
+    async function checkPracticeAnswer(userAns) {
+        practiceCount++;
+        let isCorrect = false;
+        const q = currentPracticeQuestion;
+
+        if (q.t === 4) {
+            const inputVal = document.getElementById("practice-write-ans").value.trim().toLowerCase();
+            isCorrect = (inputVal === q.a.toLowerCase());
+            userAns = inputVal;
+        } else if (q.t === 2) {
+            isCorrect = JSON.stringify(userAns) === JSON.stringify(q.a);
+        } else {
+            isCorrect = (userAns === q.a);
+        }
+
+        if (isCorrect) practiceCorrect++;
+
+        // 練習データを送信
+        try {
+            fetch(GAS_API_URL, {
+                method: "POST",
+                body: JSON.stringify({
+                    action: "submitPractice",
+                    userId: userId,
+                    data: { question: { t: q.t, q: q.q, s: q.s, a: q.a }, userAnswer: userAns, isCorrect: isCorrect }
+                })
+            });
+        } catch (e) {
+            console.log("練習ログ送信失敗", e);
+        }
+
+        // 回答後の画像・音声によるフィードバック
+        const area = document.getElementById("practice-area");
+        const feedback = document.createElement("div");
+        feedback.className = `feedback-container ${isCorrect ? 'feedback-correct' : 'feedback-wrong'}`;
+        
+        let mediaHtml = "";
+        if (userTeam === "A" && q.targetWord.imageUrl) {
+            mediaHtml = `<div class="explanation-media"><p>イメージ画像</p><img src="${q.targetWord.imageUrl}" style="max-width:150px; border-radius:8px;"></div>`;
+        } else if (userTeam === "B" && q.targetWord.audioUrl) {
+            mediaHtml = `
+                <div class="explanation-media">
+                    <p>単語の音声</p>
+                    <button class="btn-audio" onclick="playAudio('${q.targetWord.audioUrl}')">▶</button>
+                </div>`;
+            playAudio(q.targetWord.audioUrl); // 音声ありチームには自動再生
+        }
+
+        feedback.innerHTML = `
+            <h3>${isCorrect ? "正解！" : "不正解..."}</h3>
+            <p style="margin-top:5px; color:var(--text);">正解: <strong>${q.t === 2 ? q.a.join(', ') : (q.t === 4 ? q.a : q.s[q.a - 1])}</strong></p>
+            <p style="font-size:13px; color:#7F8C8D; margin-top:5px;">意味: ${q.targetWord.translation}</p>
+            ${mediaHtml}
+            <button class="btn-start" style="margin-top:15px; animation:none; padding:10px 20px;" onclick="nextPractice()">次の問題へ</button>
+        `;
+        area.appendChild(feedback);
+    }
+
+    function quitPractice() {
+        changeScreen("screen-start-menu");
+    }
+
+    // -------------------------------------------------------------------------
+    // テスト画面の制御 (Sheet2で設定された問題セットを順番に表示)
+    // -------------------------------------------------------------------------
+    let currentTestIndex = 0;
+    let testQuestions = [];
+    let userTestAnswers = [];
+
+    function initTest() {
+        testQuestions = testInfo.questions.slice(0, testInfo.questionCount);
+        currentTestIndex = 0;
+        userTestAnswers = [];
+        changeScreen("screen-test");
+        showTestQuestion();
+    }
+
+    function showTestQuestion() {
+        const area = document.getElementById("test-area");
+        area.innerHTML = "";
+
+        if (currentTestIndex >= testQuestions.length) {
+            submitTestAnswers();
+            return;
+        }
+
+        const q = testQuestions[currentTestIndex];
+        const qBox = document.createElement("div");
+        qBox.className = "question-box";
+        
+        let html = `<div class="question-text">Q${currentTestIndex + 1}: ${q.q}</div>`;
+
+        if (q.t === 4) {
+            html += `
+                <input type="text" id="test-write-ans" class="input-write" placeholder="英語を入力">
+                <button class="btn-start" style="animation:none; width:100%; border-radius:6px;" onclick="nextTestQuestion(4)">次の問題へ</button>
+            `;
+        } else {
+            html += `<div class="options-container">`;
+            q.s.forEach((opt, index) => {
+                html += `<button class="option-btn" onclick="nextTestQuestion(${index + 1})">${opt}</button>`;
+            });
+            html += `</div>`;
+        }
+
+        qBox.innerHTML = html;
+        area.appendChild(qBox);
+    }
+
+    function nextTestQuestion(userAns) {
+        if (testQuestions[currentTestIndex].t === 4) {
+            userAns = document.getElementById("test-write-ans").value.trim();
+        }
+        
+        userTestAnswers.push({
+            qIndex: currentTestIndex,
+            userAns: userAns
+        });
+
+        currentTestIndex++;
+        showTestQuestion();
+    }
+
+    async function submitTestAnswers() {
+        clearInterval(studyTimer);
+        
+        // テスト採点
+        let correctCount = 0;
+        userTestAnswers.forEach((ans, idx) => {
+            const originalQ = testQuestions[idx];
+            if (originalQ.t === 4) {
+                if (String(ans.userAns).toLowerCase() === String(originalQ.a).toLowerCase()) correctCount++;
+            } else {
+                if (ans.userAns === originalQ.a) correctCount++;
+            }
+        });
+
+        const score = Math.round((correctCount / testQuestions.length) * 100);
+
+        try {
+            const response = await fetch(GAS_API_URL, {
+                method: "POST",
+                body: JSON.stringify({
+                    action: "submitTest",
+                    userId: userId,
+                    data: {
+                        practiceCount: practiceCount,
+                        practiceCorrect: practiceCorrect,
+                        testScore: score,
+                        testAnswers: userTestAnswers
+                    }
+                })
+            });
+            const res = await response.json();
+            if (res.success) {
+                alert(`テストが終了しました！\n得点: ${score}点\n送信が完了しました。`);
+            } else {
+                alert("データの保存に失敗しました。管理者へ問い合わせてください。");
+            }
+        } catch (e) {
+            alert("通信に失敗しました。ネットワークを確認してください。");
+        } finally {
+            goToTitle();
+        }
+    }
+
+    function finishStudySession() {
+        clearInterval(studyTimer);
+        alert("10分間の学習が終了しました。結果を送信して終了します。");
+        
+        fetch(GAS_API_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                action: "submitTest",
+                userId: userId,
+                data: {
+                    practiceCount: practiceCount,
+                    practiceCorrect: practiceCorrect,
+                    testScore: 0,
+                    testAnswers: []
+                }
+            })
+        }).finally(() => {
+            goToTitle();
+        });
+    }
+
+    function goToTitle() {
+        clearInterval(studyTimer);
+        changeScreen("screen-title");
+        // 自動再ログインを防止するため、ログイン用ボタンを「再読み込み」に変更可能
+        document.getElementById("btn-start-app").innerText = "再接続・再ログイン";
+    }
+
+    function goBackToMenu() {
+        changeScreen("screen-start-menu");
+    }
+</script>
+</body>
+</html>
