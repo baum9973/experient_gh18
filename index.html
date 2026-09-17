@@ -538,7 +538,7 @@
                 alert("データの取得に失敗しました: " + res.error);
             }
         } catch (err) {
-            console.log("通信エラーが発生しました。GASの公開状態(URL)を再確認してください。");
+            console.error("通信エラー:", err);
         } finally {
             startBtn.disabled = false;
             startBtn.innerText = "ログイン";
