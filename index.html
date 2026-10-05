@@ -438,23 +438,38 @@
     let filteredWords = []; // スケジュール範囲内の単語
 
     // タイマー・学習状況管理
+    const TIME_STORAGE_KEY = "word_app_time_left_ms"; // 残り時間をミリ秒でlocalStorageに保存
+    const TOTAL_TIME_MS = 600000; // 10分
     let studyTimer = null;
-    let timeLeft = 600; // 10分 (600秒)
-    let hasStudyStarted = false; // 一度でもタイマーを開始したか(ログアウトしても時間を引き継ぐため)
+    let timeLeft = TOTAL_TIME_MS; // ミリ秒単位で管理
     let practiceCount = 0;
     let practiceCorrect = 0;
     let activeScreen = "title";
 
     // -------------------------------------------------------------------------
-    // デバッグ用コマンド：ブラウザのコンソールから resetStudyTimer() を呼ぶと
-    // 残り時間を10分にリセットできる(通常のUIからは呼ばれない)
+    // デバッグ用コマンド：Alt+Q → (2秒以内に) Alt+A の順番で押すと
+    // 残り時間を10分にリセットできる(通常のUIやボタンからは呼べない隠しコマンド)
     // -------------------------------------------------------------------------
-    window.resetStudyTimer = function() {
-        hasStudyStarted = false;
-        timeLeft = 600;
+    function resetStudyTimer() {
+        timeLeft = TOTAL_TIME_MS;
+        localStorage.setItem(TIME_STORAGE_KEY, String(timeLeft));
         updateTimerUI();
         console.log("[デバッグ] 残り時間を10分にリセットしました。");
-    };
+    }
+
+    let debugWaitingForAltA = false;
+    let debugWaitingTimeoutId = null;
+    window.addEventListener('keydown', function(e) {
+        if (e.altKey && e.key.toLowerCase() === 'q') {
+            debugWaitingForAltA = true;
+            if (debugWaitingTimeoutId) clearTimeout(debugWaitingTimeoutId);
+            debugWaitingTimeoutId = setTimeout(() => { debugWaitingForAltA = false; }, 2000); // 2秒以内に次を押す
+        } else if (e.altKey && e.key.toLowerCase() === 'a' && debugWaitingForAltA) {
+            debugWaitingForAltA = false;
+            clearTimeout(debugWaitingTimeoutId);
+            resetStudyTimer();
+        }
+    });
 
     // -------------------------------------------------------------------------
     // 起動時処理：localStorageによる自動ログイン
@@ -508,20 +523,24 @@
     function startStudyTimer() {
         if (studyTimer) clearInterval(studyTimer);
 
-        // 初回ログイン時のみ10分にセットする。ログアウト→再ログインしても
-        // (デバッグコマンドresetStudyTimer()を使わない限り)残り時間を引き継ぐ。
-        if (!hasStudyStarted) {
-            timeLeft = 600; // 10分
-            hasStudyStarted = true;
+        // localStorageに残り時間(ms)があればそれを引き継ぐ(ページのリロード・ログアウトをまたいでも保持される)。
+        // 無ければ(初回ログイン時)10分からスタートする。
+        const stored = localStorage.getItem(TIME_STORAGE_KEY);
+        if (stored === null) {
+            timeLeft = TOTAL_TIME_MS;
+            localStorage.setItem(TIME_STORAGE_KEY, String(timeLeft));
+        } else {
+            timeLeft = parseInt(stored, 10);
         }
         updateTimerUI();
 
         studyTimer = setInterval(() => {
-            timeLeft--;
+            timeLeft -= 1000;
+            localStorage.setItem(TIME_STORAGE_KEY, String(timeLeft));
             updateTimerUI();
 
-            // 残り1分前 (60秒) の警告表示
-            if (timeLeft === 60) {
+            // 残り1分前の警告表示
+            if (timeLeft === 60000) {
                 const toast = document.getElementById("toast-warning");
                 toast.classList.add("show");
                 setTimeout(() => toast.classList.remove("show"), 5000); // 5秒後に自動消去
@@ -540,8 +559,9 @@
     }
 
     function updateTimerUI() {
-        const minutes = Math.floor(timeLeft / 60);
-        const seconds = timeLeft % 60;
+        const totalSeconds = Math.max(0, Math.ceil(timeLeft / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
         const timeStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         
         document.getElementById("timer-display").innerText = "残り時間: " + timeStr;
@@ -575,7 +595,14 @@
 
                 setupMainMenuButton();
                 changeScreen("screen-start-menu");
-                startStudyTimer();
+
+                // テスト期間中はスタート画面の時点から時間制限なし。練習期間中のみタイマーを動かす。
+                if (document.getElementById("btn-start-action").dataset.mode === "test") {
+                    if (studyTimer) clearInterval(studyTimer);
+                    document.getElementById("timer-display").innerText = "テスト中は時間制限なし";
+                } else {
+                    startStudyTimer();
+                }
             } else {
                 alert("データの取得に失敗しました: " + res.error);
             }
