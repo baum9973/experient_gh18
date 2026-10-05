@@ -263,6 +263,31 @@
             margin-bottom: 15px;
         }
 
+        .rearrange-answer {
+            background: #F8F9FA;
+            border: 1px solid #D1D5DB;
+            border-radius: 6px;
+            padding: 15px;
+        }
+
+        .rearrange-answer label {
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .rearrange-answer select {
+            margin-left: 8px;
+            padding: 6px 10px;
+            font-size: 15px;
+            border: 1px solid #D1D5DB;
+            border-radius: 4px;
+        }
+
+        button:disabled, select:disabled, input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         /* ポップアップ警告 (残り1分) */
         #toast-warning {
             position: absolute;
@@ -340,6 +365,9 @@
     <!-- 残り1分警告用トースト -->
     <div id="toast-warning">⚠️ 勉強時間は残り1分です！</div>
 
+    <!-- クレジット表記 -->
+    <div style="position:absolute; bottom:4px; right:8px; font-size:10px; color:#AAB2B8; z-index:5;">音声: 音読さん</div>
+
     <!-- オフライン強制遮断画面 -->
     <div id="offline-overlay">
         <h2>🛜 ネットワーク未接続</h2>
@@ -360,7 +388,7 @@
             <div id="timer-display" style="color: var(--danger); font-size: 16px;">残り時間: --:--</div>
         </div>
         <button id="btn-start-action" class="menu-btn" style="margin-top: 40px;" onclick="startMainAction()">読み込み中...</button>
-        <button class="menu-btn" onclick="showWordList()">単語一覧</button>
+        <button id="btn-word-list" class="menu-btn" onclick="showWordList()">単語一覧</button>
     </div>
 
     <!-- ③ 単語一覧画面 -->
@@ -389,7 +417,6 @@
     <div id="screen-test" class="screen">
         <div class="app-header">
             <div>本番テスト</div>
-            <div id="test-timer" style="color: var(--danger);">--:--</div>
         </div>
         <div id="test-area" style="margin-top: 15px;">
             <!-- テスト問題エリア -->
@@ -413,9 +440,21 @@
     // タイマー・学習状況管理
     let studyTimer = null;
     let timeLeft = 600; // 10分 (600秒)
+    let hasStudyStarted = false; // 一度でもタイマーを開始したか(ログアウトしても時間を引き継ぐため)
     let practiceCount = 0;
     let practiceCorrect = 0;
     let activeScreen = "title";
+
+    // -------------------------------------------------------------------------
+    // デバッグ用コマンド：ブラウザのコンソールから resetStudyTimer() を呼ぶと
+    // 残り時間を10分にリセットできる(通常のUIからは呼ばれない)
+    // -------------------------------------------------------------------------
+    window.resetStudyTimer = function() {
+        hasStudyStarted = false;
+        timeLeft = 600;
+        updateTimerUI();
+        console.log("[デバッグ] 残り時間を10分にリセットしました。");
+    };
 
     // -------------------------------------------------------------------------
     // 起動時処理：localStorageによる自動ログイン
@@ -432,10 +471,8 @@
         userId = storedId;
         document.getElementById("user-id-display").innerText = "ID: " + userId;
 
-        // オンラインかつIDが存在すれば、自動でログイン処理を走らせる
-        if (navigator.onLine) {
-            initApp();
-        }
+        // 自動ログインはしない。ユーザーが「ログイン」ボタンを押したタイミングで
+        // 初めてデータ取得・タイマー開始が行われる(initApp()を参照)。
     };
 
     // -------------------------------------------------------------------------
@@ -470,7 +507,13 @@
     // -------------------------------------------------------------------------
     function startStudyTimer() {
         if (studyTimer) clearInterval(studyTimer);
-        timeLeft = 600; // 10分
+
+        // 初回ログイン時のみ10分にセットする。ログアウト→再ログインしても
+        // (デバッグコマンドresetStudyTimer()を使わない限り)残り時間を引き継ぐ。
+        if (!hasStudyStarted) {
+            timeLeft = 600; // 10分
+            hasStudyStarted = true;
+        }
         updateTimerUI();
 
         studyTimer = setInterval(() => {
@@ -503,7 +546,6 @@
         
         document.getElementById("timer-display").innerText = "残り時間: " + timeStr;
         document.getElementById("practice-timer").innerText = timeStr;
-        document.getElementById("test-timer").innerText = timeStr;
     }
 
     // -------------------------------------------------------------------------
@@ -538,7 +580,7 @@
                 alert("データの取得に失敗しました: " + res.error);
             }
         } catch (err) {
-            console.error("通信エラー:", err);
+            console.log("通信エラーが発生しました。GASの公開状態(URL)を再確認してください。");
         } finally {
             startBtn.disabled = false;
             startBtn.innerText = "ログイン";
@@ -547,6 +589,7 @@
 
     function setupMainMenuButton() {
         const actionBtn = document.getElementById("btn-start-action");
+        const wordListBtn = document.getElementById("btn-word-list");
         const now = new Date();
         
         const testStart = testInfo.testStartTime ? new Date(testInfo.testStartTime.replace(/-/g, "/")) : null;
@@ -556,9 +599,11 @@
         if (testStart && testEnd && now >= testStart && now <= testEnd) {
             actionBtn.innerText = "テスト開始";
             actionBtn.dataset.mode = "test";
+            wordListBtn.style.display = "none"; // テスト中は単語一覧を見せない
         } else {
             actionBtn.innerText = "練習開始";
             actionBtn.dataset.mode = "practice";
+            wordListBtn.style.display = "";
         }
     }
 
@@ -642,8 +687,11 @@
                 <input type="text" id="practice-write-ans" class="input-write" placeholder="英語を入力してください">
                 <button class="btn-start" style="animation:none; width:100%; border-radius:6px;" onclick="checkPracticeAnswer(4)">解答する</button>
             `;
+        } else if (t === 2) {
+            // 並び替え問題：2番目・4番目の単語の番号をプルダウンで選んで解答
+            html += buildRearrangeAnswerUI(currentPracticeQuestion.s, "checkPracticeAnswer");
         } else {
-            // 選択肢問題 (1, 2, 3)
+            // 選択肢問題 (1, 3)
             html += `<div class="options-container">`;
             currentPracticeQuestion.s.forEach((opt, index) => {
                 html += `<button class="option-btn" onclick="checkPracticeAnswer(${index + 1})">${opt}</button>`;
@@ -653,6 +701,34 @@
 
         qBox.innerHTML = html;
         area.appendChild(qBox);
+    }
+
+    // 並び替え問題(t=2)の回答UIを組み立てる。answerFnNameは"checkPracticeAnswer"または"nextTestQuestion"
+    function buildRearrangeAnswerUI(shuffledWords, answerFnName) {
+        let options = "";
+        for (let i = 1; i <= shuffledWords.length; i++) {
+            options += `<option value="${i}">${i}</option>`;
+        }
+        return `
+            <div class="rearrange-answer">
+                <label>2番目の単語の番号：<select id="rearrange-2nd">${options}</select></label>
+                <label style="margin-top:10px; display:block;">4番目の単語の番号：<select id="rearrange-4th">${options}</select></label>
+                <button class="btn-start" style="animation:none; width:100%; border-radius:6px; margin-top:15px;"
+                    onclick="${answerFnName}(getRearrangeAnswer())">解答する</button>
+            </div>
+        `;
+    }
+
+    // 2つのプルダウンの選択値を[2番目,4番目]の配列として取得
+    function getRearrangeAnswer() {
+        const second = parseInt(document.getElementById("rearrange-2nd").value);
+        const fourth = parseInt(document.getElementById("rearrange-4th").value);
+        return [second, fourth];
+    }
+
+    // 解答済みのボタン・選択肢を連打できないようにする(多重送信防止)
+    function disableAllAnswerControls(area) {
+        area.querySelectorAll("button, select, input").forEach(el => el.disabled = true);
     }
 
     // 問題生成ロジック
@@ -674,22 +750,19 @@
             a = options.indexOf(targetWord.word) + 1;
         } 
         else if (t === 2) {
-            // 並び替え問題
+            // 並び替え問題：例文全体(原文)をそのまま使う。
+            // こうすることで「対象単語が含まれない」「一部だけ抜き出される」事故を防ぐ。
             const cleanEx = targetWord.example.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
-            const wordsArr = cleanEx.split(/\s+/).filter(Boolean);
-            const wIdx = targetWord.wordIndex - 1; // 0ベース
-            
-            const length = Math.min(wordsArr.length, Math.floor(Math.random() * 3) + 5); 
-            let startIdx = Math.max(0, wIdx - Math.floor(length / 2));
-            if (startIdx + length > wordsArr.length) {
-                startIdx = Math.max(0, wordsArr.length - length);
-            }
-            const subWords = wordsArr.slice(startIdx, startIdx + length);
-            const originalSubWords = [...subWords];
+            const originalSubWords = cleanEx.split(/\s+/).filter(Boolean);
 
-            const shuffled = shuffle([...subWords]);
+            // 例文が4語未満だと2番目・4番目を問えないため、その場合は4択問題にフォールバック
+            if (originalSubWords.length < 4) {
+                return generateQuestion(1);
+            }
+
+            const shuffled = shuffle([...originalSubWords]);
             
-            q = `Rearrange the following words and answer the numbers of the 2nd and 4th words.\n` + 
+            q = `Rearrange the following words into the original sentence order, then select the numbers of the 2nd word and the 4th word (in the correct order) from the list below.\n` + 
                 shuffled.map((w, i) => `${i+1}-${w}`).join("  ");
             
             s = shuffled;
@@ -699,17 +772,17 @@
             a = [shuffled.indexOf(secondWord) + 1, shuffled.indexOf(fourthWord) + 1];
         } 
         else if (t === 3) {
-            // 例文の虫食い4択
+            // 例文の虫食い4択(和訳を先に表示して意味が分かるようにする)
             const blankEx = targetWord.example.replace(new RegExp(`\\b${targetWord.word}\\b`, 'gi'), "(   )");
-            q = `${blankEx}\nWhat word goes in the blank?`;
+            q = `${targetWord.exampleTranslation}\n${blankEx}\nWhat word goes in the blank?`;
             const options = shuffle([targetWord.word, ...dummyWords.slice(0, 3).map(w => w.word)]);
             s = options;
             a = options.indexOf(targetWord.word) + 1;
         } 
         else if (t === 4) {
-            // 例文書き取り
+            // 例文書き取り(和訳を先に表示して意味が分かるようにする)
             const blankEx = targetWord.example.replace(new RegExp(`\\b${targetWord.word}\\b`, 'gi'), "(   )");
-            q = `${blankEx}\nType the word that goes in the blank.`;
+            q = `${targetWord.exampleTranslation}\n${blankEx}\nType the word that goes in the blank.`;
             s = [];
             a = targetWord.word;
         }
@@ -718,6 +791,9 @@
     }
 
     async function checkPracticeAnswer(userAns) {
+        const area = document.getElementById("practice-area");
+        disableAllAnswerControls(area); // 連打・多重送信防止
+
         practiceCount++;
         let isCorrect = false;
         const q = currentPracticeQuestion;
@@ -749,7 +825,6 @@
         }
 
         // 回答後の画像・音声によるフィードバック
-        const area = document.getElementById("practice-area");
         const feedback = document.createElement("div");
         feedback.className = `feedback-container ${isCorrect ? 'feedback-correct' : 'feedback-wrong'}`;
         
@@ -762,7 +837,6 @@
                     <p>単語の音声</p>
                     <button class="btn-audio" onclick="playAudio('${q.targetWord.audioUrl}')">▶</button>
                 </div>`;
-            playAudio(q.targetWord.audioUrl); // 音声ありチームには自動再生
         }
 
         feedback.innerHTML = `
@@ -787,6 +861,9 @@
     let userTestAnswers = [];
 
     function initTest() {
+        // テスト中は時間制限なし(研究用の練習時間とは別物のため)
+        if (studyTimer) clearInterval(studyTimer);
+
         testQuestions = testInfo.questions.slice(0, testInfo.questionCount);
         currentTestIndex = 0;
         userTestAnswers = [];
@@ -814,6 +891,8 @@
                 <input type="text" id="test-write-ans" class="input-write" placeholder="英語を入力">
                 <button class="btn-start" style="animation:none; width:100%; border-radius:6px;" onclick="nextTestQuestion(4)">次の問題へ</button>
             `;
+        } else if (q.t === 2) {
+            html += buildRearrangeAnswerUI(q.s, "nextTestQuestion");
         } else {
             html += `<div class="options-container">`;
             q.s.forEach((opt, index) => {
@@ -827,6 +906,8 @@
     }
 
     function nextTestQuestion(userAns) {
+        disableAllAnswerControls(document.getElementById("test-area")); // 連打・多重送信防止
+
         if (testQuestions[currentTestIndex].t === 4) {
             userAns = document.getElementById("test-write-ans").value.trim();
         }
@@ -849,6 +930,8 @@
             const originalQ = testQuestions[idx];
             if (originalQ.t === 4) {
                 if (String(ans.userAns).toLowerCase() === String(originalQ.a).toLowerCase()) correctCount++;
+            } else if (originalQ.t === 2) {
+                if (JSON.stringify(ans.userAns) === JSON.stringify(originalQ.a)) correctCount++;
             } else {
                 if (ans.userAns === originalQ.a) correctCount++;
             }
