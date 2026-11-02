@@ -357,6 +357,10 @@
             50% { transform: scale(1.05); box-shadow: 0 4px 25px rgba(74, 144, 226, 0.6); }
             100% { transform: scale(1); box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4); }
         }
+        .menu-btn:disabled:hover {
+            background-color: white;
+            color: var(--primary);
+        }
     </style>
 </head>
 <body>
@@ -388,6 +392,9 @@
             <div id="timer-display" style="color: var(--danger); font-size: 16px;">残り時間: --:--</div>
         </div>
         <button id="btn-start-action" class="menu-btn" style="margin-top: 40px;" onclick="startMainAction()">読み込み中...</button>
+        <div id="thanks-message" style="display:none; text-align:center; font-size:20px; font-weight:bold; color:var(--success);">
+            ご協力感謝します
+        </div>
         <button id="btn-word-list" class="menu-btn" onclick="showWordList()">単語一覧</button>
     </div>
 
@@ -436,6 +443,7 @@
     let wordsData = [];
     let testInfo = null;
     let filteredWords = []; // スケジュール範囲内の単語
+    let hasTakenTest = false; // すでにテストを受けたか
 
     // タイマー・学習状況管理
     const TIME_STORAGE_KEY = "word_app_time_left_ms"; // 残り時間をミリ秒でlocalStorageに保存
@@ -592,6 +600,7 @@
                 const start = (testInfo.startWordNo - 1) >= 0 ? (testInfo.startWordNo - 1) : 0;
                 const end = testInfo.endWordNo;
                 filteredWords = wordsData.slice(start, end);
+                hasTakenTest = res.data.hasTakenTest === true;
 
                 setupMainMenuButton();
                 changeScreen("screen-start-menu");
@@ -614,34 +623,48 @@
         }
     }
 
-    function setupMainMenuButton() {
-        const actionBtn = document.getElementById("btn-start-action");
-        const wordListBtn = document.getElementById("btn-word-list");
-        const now = new Date();
-        
-        const testStart = testInfo.testStartTime ? new Date(testInfo.testStartTime.replace(/-/g, "/")) : null;
-        const testEnd = testInfo.testEndTime ? new Date(testInfo.testEndTime.replace(/-/g, "/")) : null;
+    // メインボタン（練習開始／テスト開始）の表示を決める
+// 仕組み:
+//   1. 現在時刻がテスト期間内ならテストモード、そうでなければ練習モードにする
+//   2. テストモードで受験済みなら、ボタンを押せなくして感謝メッセージを出す
+function setupMainMenuButton() {
+    const actionBtn = document.getElementById("btn-start-action");
+    const wordListBtn = document.getElementById("btn-word-list");
+    const thanksMessage = document.getElementById("thanks-message");
+    const now = new Date();
 
-        // 現在時刻がテストスケジュールの時間内の場合は「テスト開始」を表示
-        if (testStart && testEnd && now >= testStart && now <= testEnd) {
-            actionBtn.innerText = "テスト開始";
-            actionBtn.dataset.mode = "test";
-            wordListBtn.style.display = "none"; // テスト中は単語一覧を見せない
-        } else {
-            actionBtn.innerText = "練習開始";
-            actionBtn.dataset.mode = "practice";
-            wordListBtn.style.display = "";
-        }
-    }
+    const testStart = testInfo.testStartTime ? new Date(testInfo.testStartTime.replace(/-/g, "/")) : null;
+    const testEnd = testInfo.testEndTime ? new Date(testInfo.testEndTime.replace(/-/g, "/")) : null;
 
-    function startMainAction() {
-        const mode = document.getElementById("btn-start-action").dataset.mode;
-        if (mode === "test") {
-            initTest();
-        } else {
-            initPractice();
+    // 毎回、表示を初期状態に戻す
+    actionBtn.disabled = false;
+    thanksMessage.style.display = "none";
+
+    if (testStart && testEnd && now >= testStart && now <= testEnd) {
+        actionBtn.innerText = "テスト開始";
+        actionBtn.dataset.mode = "test";
+        wordListBtn.style.display = "none"; // テスト中は単語一覧を見せない
+
+        if (hasTakenTest) {
+            actionBtn.disabled = true;
+            thanksMessage.style.display = "block";
         }
+    } else {
+        actionBtn.innerText = "練習開始";
+        actionBtn.dataset.mode = "practice";
+        wordListBtn.style.display = "";
     }
+}
+
+function startMainAction() {
+    const mode = document.getElementById("btn-start-action").dataset.mode;
+    if (mode === "test") {
+        if (hasTakenTest) return; // 開発者ツールなどから押されても受験させない
+        initTest();
+    } else {
+        initPractice();
+    }
+}
 
     // -------------------------------------------------------------------------
     // 単語一覧画面の制御
