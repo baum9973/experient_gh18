@@ -395,6 +395,9 @@
         <div id="thanks-message" style="display:none; text-align:center; font-size:20px; font-weight:bold; color:var(--success);">
             ご協力感謝します
         </div>
+        <div id="waiting-message" style="display:none; text-align:center; font-size:20px; font-weight:bold; color:var(--text);">
+            続報をお待ちください…
+        </div>
         <button id="btn-word-list" class="menu-btn" onclick="showWordList()">単語一覧</button>
     </div>
 
@@ -629,24 +632,35 @@
         }
     }
 
-    // メインボタン（練習開始／テスト開始）の表示を決める
+    // メインボタン（練習開始／テスト開始）や待機表示を、サーバーから届いた区分（phase）で決める
 // 仕組み:
-//   1. 現在時刻がテスト期間内ならテストモード、そうでなければ練習モードにする
-//   2. テストモードで受験済みなら、ボタンを押せなくして感謝メッセージを出す
+//   1. まず全部の表示を初期状態に戻す
+//   2. phase が "waiting" なら、メッセージとログアウトボタンだけを表示し、残り時間を10分に戻す
+//   3. phase が "test" ならテスト開始ボタン（受験済みなら押せなくして感謝メッセージ）
+//   4. それ以外は練習開始ボタン
 function setupMainMenuButton() {
     const actionBtn = document.getElementById("btn-start-action");
     const wordListBtn = document.getElementById("btn-word-list");
     const thanksMessage = document.getElementById("thanks-message");
-    const now = new Date();
-
-    const testStart = testInfo.testStartTime ? new Date(testInfo.testStartTime.replace(/-/g, "/")) : null;
-    const testEnd = testInfo.testEndTime ? new Date(testInfo.testEndTime.replace(/-/g, "/")) : null;
+    const waitingMessage = document.getElementById("waiting-message");
+    const timerDisplay = document.getElementById("timer-display");
 
     // 毎回、表示を初期状態に戻す
+    actionBtn.style.display = "";
     actionBtn.disabled = false;
+    wordListBtn.style.display = "";
     thanksMessage.style.display = "none";
+    waitingMessage.style.display = "none";
+    timerDisplay.style.display = "";
 
-    if (testStart && testEnd && now >= testStart && now <= testEnd) {
+    if (testInfo.phase === "waiting") {
+        actionBtn.dataset.mode = "waiting";
+        actionBtn.style.display = "none";
+        wordListBtn.style.display = "none";
+        timerDisplay.style.display = "none";
+        waitingMessage.style.display = "block";
+        resetStoredStudyTime();
+    } else if (testInfo.phase === "test") {
         actionBtn.innerText = "テスト開始";
         actionBtn.dataset.mode = "test";
         wordListBtn.style.display = "none"; // テスト中は単語一覧を見せない
@@ -658,12 +672,19 @@ function setupMainMenuButton() {
     } else {
         actionBtn.innerText = "練習開始";
         actionBtn.dataset.mode = "practice";
-        wordListBtn.style.display = "";
     }
+}
+
+// 残り時間を10分に戻して、保存されている値も消す（待機中に使う）
+function resetStoredStudyTime() {
+    if (studyTimer) clearInterval(studyTimer);
+    timeLeft = TOTAL_TIME_MS;
+    localStorage.removeItem(getTimeStorageKey());
 }
 
 function startMainAction() {
     const mode = document.getElementById("btn-start-action").dataset.mode;
+    if (mode === "waiting") return; // 待機中は何も始めない
     if (mode === "test") {
         if (hasTakenTest) return; // 開発者ツールなどから押されても受験させない
         initTest();
