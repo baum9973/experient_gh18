@@ -446,7 +446,13 @@
     let hasTakenTest = false; // すでにテストを受けたか
 
     // タイマー・学習状況管理
-    const TIME_STORAGE_KEY = "word_app_time_left_ms"; // 残り時間をミリ秒でlocalStorageに保存
+    // 残り時間(ミリ秒)をlocalStorageに保存するときのキー名を返す
+    // 仕組み: 練習開始時刻を末尾につけて、テストごとに別の保存場所にする。
+    //         新しいテスト期間に入ると、まだ保存がないので10分から始まる
+    function getTimeStorageKey() {
+        const practiceStartTime = testInfo ? testInfo.practiceStartTime : "default";
+        return "word_app_time_left_ms_" + practiceStartTime;
+    }
     const TOTAL_TIME_MS = 600000; // 10分
     let studyTimer = null;
     let timeLeft = TOTAL_TIME_MS; // ミリ秒単位で管理
@@ -460,7 +466,7 @@
     // -------------------------------------------------------------------------
     function resetStudyTimer() {
         timeLeft = TOTAL_TIME_MS;
-        localStorage.setItem(TIME_STORAGE_KEY, String(timeLeft));
+        localStorage.setItem(getTimeStorageKey(), String(timeLeft));
         updateTimerUI();
         console.log("[デバッグ] 残り時間を10分にリセットしました。");
     }
@@ -533,10 +539,10 @@
 
         // localStorageに残り時間(ms)があればそれを引き継ぐ(ページのリロード・ログアウトをまたいでも保持される)。
         // 無ければ(初回ログイン時)10分からスタートする。
-        const stored = localStorage.getItem(TIME_STORAGE_KEY);
+        const stored = localStorage.getItem(getTimeStorageKey());
         if (stored === null) {
             timeLeft = TOTAL_TIME_MS;
-            localStorage.setItem(TIME_STORAGE_KEY, String(timeLeft));
+            localStorage.setItem(getTimeStorageKey(), String(timeLeft));
         } else {
             timeLeft = parseInt(stored, 10);
         }
@@ -544,7 +550,7 @@
 
         studyTimer = setInterval(() => {
             timeLeft -= 1000;
-            localStorage.setItem(TIME_STORAGE_KEY, String(timeLeft));
+            localStorage.setItem(getTimeStorageKey(), String(timeLeft));
             updateTimerUI();
 
             // 残り1分前の警告表示
