@@ -653,7 +653,7 @@ function setupMainMenuButton() {
     waitingMessage.style.display = "none";
     timerDisplay.style.display = "";
 
-    if (testInfo.phase === "waiting") {
+    if (testInfo.phase !== "practice" && testInfo.phase !== "test") {
         actionBtn.dataset.mode = "waiting";
         actionBtn.style.display = "none";
         wordListBtn.style.display = "none";
