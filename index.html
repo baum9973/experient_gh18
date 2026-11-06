@@ -217,6 +217,76 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
 
+        /* 画像の拡大表示(画像本体と、その右の拡大ボタン) */
+        .zoomable-image {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .zoomable-image img {
+            cursor: zoom-in;
+        }
+
+        .btn-zoom {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            border-radius: 50%;
+            border: 1px solid #D1D5DB;
+            background: white;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .btn-zoom:hover {
+            background: #E5E7EB;
+        }
+
+        /* 拡大表示の画面(ブラウザ全体を覆う。画像は画面からはみ出さない最大サイズ) */
+        #image-viewer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 3000;
+            cursor: zoom-out;
+        }
+
+        #image-viewer.active {
+            display: flex;
+        }
+
+        #image-viewer img {
+            max-width: calc(100vw - 32px);
+            max-height: calc(100vh - 32px);
+            object-fit: contain;
+            border-radius: 6px;
+        }
+
+        #image-viewer-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255, 255, 255, 0.9);
+            color: var(--text);
+            font-size: 20px;
+            cursor: pointer;
+        }
+
         /* 練習 & テスト問題 */
         .question-box {
             background: white;
@@ -353,7 +423,7 @@
         }
 
         @keyframes pulse {
-            0% { transform: scale(1); box-shadow: 0 4px 15 rgba(74, 144, 226, 0.4); }
+            0% { transform: scale(1); box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4); }
             50% { transform: scale(1.05); box-shadow: 0 4px 25px rgba(74, 144, 226, 0.6); }
             100% { transform: scale(1); box-shadow: 0 4px 15px rgba(74, 144, 226, 0.4); }
         }
@@ -388,7 +458,7 @@
     <!-- ② スタート画面 (練習 or テスト・単語一覧選択) -->
     <div id="screen-start-menu" class="screen">
         <div class="app-header">
-            <button class="btn-header" onclick="goToTitle()">ログアウト</button>
+            <button class="btn-header" onclick="logoutFromApp()">ログアウト</button>
             <div id="timer-display" style="color: var(--danger); font-size: 16px;">残り時間: --:--</div>
         </div>
         <button id="btn-start-action" class="menu-btn" style="margin-top: 40px;" onclick="startMainAction()">読み込み中...</button>
@@ -434,6 +504,12 @@
     </div>
 </div>
 
+<!-- 画像の拡大表示(どこをクリックしても閉じる) -->
+<div id="image-viewer" onclick="hideImageViewer()">
+    <button id="image-viewer-close" aria-label="閉じる" onclick="hideImageViewer()">✕</button>
+    <img id="image-viewer-image" src="" alt="拡大画像">
+</div>
+
 <script>
     // =========================================================================
     // フロントエンド設定
@@ -451,27 +527,29 @@
     // タイマー・学習状況管理
     // 残り時間(ミリ秒)をlocalStorageに保存するときのキー名を返す
     // 仕組み: 練習開始時刻を末尾につけて、テストごとに別の保存場所にする。
-    //         新しいテスト期間に入ると、まだ保存がないので10分から始まる
+    //         新しいテスト期間に入ると、まだ保存がないので30分から始まる
     function getTimeStorageKey() {
         const practiceStartTime = testInfo ? testInfo.practiceStartTime : "default";
         return "word_app_time_left_ms_" + practiceStartTime;
     }
-    const TOTAL_TIME_MS = 600000; // 10分
+    const TOTAL_TIME_MINUTES = 30; // 1回あたりの制限時間(分)
+    const TOTAL_TIME_MS = TOTAL_TIME_MINUTES * 60 * 1000;
     let studyTimer = null;
     let timeLeft = TOTAL_TIME_MS; // ミリ秒単位で管理
+    let isRemainingTimeTrackingActive = false; // 残り時間を数えている最中(=送信対象)か
     let practiceCount = 0;
     let practiceCorrect = 0;
     let activeScreen = "title";
 
     // -------------------------------------------------------------------------
     // デバッグ用コマンド：Alt+Q → (2秒以内に) Alt+A の順番で押すと
-    // 残り時間を10分にリセットできる(通常のUIやボタンからは呼べない隠しコマンド)
+    // 残り時間を30分にリセットできる(通常のUIやボタンからは呼べない隠しコマンド)
     // -------------------------------------------------------------------------
     function resetStudyTimer() {
         timeLeft = TOTAL_TIME_MS;
         localStorage.setItem(getTimeStorageKey(), String(timeLeft));
         updateTimerUI();
-        console.log("[デバッグ] 残り時間を10分にリセットしました。");
+        console.log("[デバッグ] 残り時間を" + TOTAL_TIME_MINUTES + "分にリセットしました。");
     }
 
     let debugWaitingForAltA = false;
@@ -535,13 +613,55 @@
     }
 
     // -------------------------------------------------------------------------
-    // タイマー処理 (10分制限)
+    // 画像の拡大表示
+    // 仕組み:
+    //   1. buildZoomableImageHtml が「画像 + 右側の虫眼鏡(+)ボタン」のHTMLを作る
+    //   2. 画像またはボタンが押されたら showImageViewer(URL) を呼ぶ
+    //   3. showImageViewer は全画面の暗い背景に画像を表示する
+    //      (CSSで max-width / max-height を画面サイズに合わせ、はみ出さない最大サイズにする)
+    //   4. 画面のどこかをクリック、✕ボタン、Escキーのどれかで hideImageViewer が閉じる
+    // -------------------------------------------------------------------------
+    const ZOOM_ICON_SVG = `
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="10" cy="10" r="6"></circle>
+            <line x1="15" y1="15" x2="21" y2="21"></line>
+            <line x1="10" y1="7" x2="10" y2="13"></line>
+            <line x1="7" y1="10" x2="13" y2="10"></line>
+        </svg>`;
+
+    function buildZoomableImageHtml(imageUrl, imageClassName, imageInlineStyle) {
+        if (!imageUrl) return "";
+        return `
+            <div class="zoomable-image">
+                <img src="${imageUrl}" class="${imageClassName}" style="${imageInlineStyle}" alt="イメージ"
+                     onclick="showImageViewer('${imageUrl}')">
+                <button class="btn-zoom" aria-label="画像を拡大" onclick="showImageViewer('${imageUrl}')">${ZOOM_ICON_SVG}</button>
+            </div>`;
+    }
+
+    function showImageViewer(imageUrl) {
+        document.getElementById("image-viewer-image").src = imageUrl;
+        document.getElementById("image-viewer").classList.add("active");
+    }
+
+    function hideImageViewer() {
+        document.getElementById("image-viewer").classList.remove("active");
+        document.getElementById("image-viewer-image").src = "";
+    }
+
+    window.addEventListener('keydown', function(event) {
+        if (event.key === "Escape") hideImageViewer();
+    });
+
+    // -------------------------------------------------------------------------
+    // タイマー処理 (30分制限)
     // -------------------------------------------------------------------------
     function startStudyTimer() {
-        if (studyTimer) clearInterval(studyTimer);
+        stopStudyTimer();
 
         // localStorageに残り時間(ms)があればそれを引き継ぐ(ページのリロード・ログアウトをまたいでも保持される)。
-        // 無ければ(初回ログイン時)10分からスタートする。
+        // 無ければ(初回ログイン時)30分からスタートする。
         const stored = localStorage.getItem(getTimeStorageKey());
         if (stored === null) {
             timeLeft = TOTAL_TIME_MS;
@@ -550,6 +670,7 @@
             timeLeft = parseInt(stored, 10);
         }
         updateTimerUI();
+        isRemainingTimeTrackingActive = true;
 
         studyTimer = setInterval(() => {
             timeLeft -= 1000;
@@ -564,8 +685,9 @@
             }
 
             if (timeLeft <= 0) {
-                clearInterval(studyTimer);
-                alert("10分間の学習・テスト時間が終了しました。強制終了します。");
+                saveRemainingTimeToServer(); // 時間切れのタイミングで残り時間(0)を送信
+                stopStudyTimer();
+                alert(TOTAL_TIME_MINUTES + "分間の学習・テスト時間が終了しました。強制終了します。");
                 if (activeScreen === "screen-test") {
                     submitTestAnswers(); // テスト中なら強制送信
                 } else {
@@ -573,6 +695,13 @@
                 }
             }
         }, 1000);
+    }
+
+    // タイマーを止める(残り時間の送信対象からも外す)
+    function stopStudyTimer() {
+        if (studyTimer) clearInterval(studyTimer);
+        studyTimer = null;
+        isRemainingTimeTrackingActive = false;
     }
 
     function updateTimerUI() {
@@ -583,6 +712,43 @@
         
         document.getElementById("timer-display").innerText = "残り時間: " + timeStr;
         document.getElementById("practice-timer").innerText = timeStr;
+    }
+
+    // -------------------------------------------------------------------------
+    // 残り時間の送信 (シート "PracticeLogs_remain" に保存される)
+    // 仕組み:
+    //   1. 送るタイミングは「時間切れ」「ログアウト」「タブを閉じるとき(pagehide)」の3つ
+    //   2. 残り時間を数えていないとき(テスト期間・待機中・すでにログアウト済み)は何も送らない
+    //   3. 残り時間は秒(整数)にして送る
+    //   4. タブを閉じる瞬間でも送信が途中で切られないよう、keepalive を付けて送る
+    //      (返事は読まないので mode は no-cors にする)
+    // -------------------------------------------------------------------------
+    function saveRemainingTimeToServer() {
+        if (!isRemainingTimeTrackingActive) return;
+
+        const remainingSeconds = Math.max(0, Math.ceil(timeLeft / 1000));
+        try {
+            fetch(GAS_API_URL, {
+                method: "POST",
+                mode: "no-cors",
+                keepalive: true,
+                body: JSON.stringify({
+                    action: "submitRemainingTime",
+                    userId: userId,
+                    data: { remainingSeconds: remainingSeconds }
+                })
+            }).catch(error => console.log("残り時間の送信に失敗", error));
+        } catch (error) {
+            console.log("残り時間の送信に失敗", error);
+        }
+    }
+
+    window.addEventListener('pagehide', saveRemainingTimeToServer);
+
+    // ログアウトボタン: 残り時間を送ってからタイトル画面に戻る
+    function logoutFromApp() {
+        saveRemainingTimeToServer();
+        goToTitle();
     }
 
     // -------------------------------------------------------------------------
@@ -616,7 +782,7 @@
 
                 // テスト期間中はスタート画面の時点から時間制限なし。練習期間中のみタイマーを動かす。
                 if (document.getElementById("btn-start-action").dataset.mode === "test") {
-                    if (studyTimer) clearInterval(studyTimer);
+                    stopStudyTimer();
                     document.getElementById("timer-display").innerText = "テスト中は時間制限なし";
                 } else {
                     startStudyTimer();
@@ -633,65 +799,65 @@
     }
 
     // メインボタン（練習開始／テスト開始）や待機表示を、サーバーから届いた区分（phase）で決める
-// 仕組み:
-//   1. まず全部の表示を初期状態に戻す
-//   2. phase が "waiting" なら、メッセージとログアウトボタンだけを表示し、残り時間を10分に戻す
-//   3. phase が "test" ならテスト開始ボタン（受験済みなら押せなくして感謝メッセージ）
-//   4. それ以外は練習開始ボタン
-function setupMainMenuButton() {
-    const actionBtn = document.getElementById("btn-start-action");
-    const wordListBtn = document.getElementById("btn-word-list");
-    const thanksMessage = document.getElementById("thanks-message");
-    const waitingMessage = document.getElementById("waiting-message");
-    const timerDisplay = document.getElementById("timer-display");
+    // 仕組み:
+    //   1. まず全部の表示を初期状態に戻す
+    //   2. phase が "waiting" なら、メッセージとログアウトボタンだけを表示し、残り時間を30分に戻す
+    //   3. phase が "test" ならテスト開始ボタン（受験済みなら押せなくして感謝メッセージ）
+    //   4. それ以外は練習開始ボタン
+    function setupMainMenuButton() {
+        const actionBtn = document.getElementById("btn-start-action");
+        const wordListBtn = document.getElementById("btn-word-list");
+        const thanksMessage = document.getElementById("thanks-message");
+        const waitingMessage = document.getElementById("waiting-message");
+        const timerDisplay = document.getElementById("timer-display");
 
-    // 毎回、表示を初期状態に戻す
-    actionBtn.style.display = "";
-    actionBtn.disabled = false;
-    wordListBtn.style.display = "";
-    thanksMessage.style.display = "none";
-    waitingMessage.style.display = "none";
-    timerDisplay.style.display = "";
+        // 毎回、表示を初期状態に戻す
+        actionBtn.style.display = "";
+        actionBtn.disabled = false;
+        wordListBtn.style.display = "";
+        thanksMessage.style.display = "none";
+        waitingMessage.style.display = "none";
+        timerDisplay.style.display = "";
 
-    if (testInfo.phase !== "practice" && testInfo.phase !== "test") {
-        actionBtn.dataset.mode = "waiting";
-        actionBtn.style.display = "none";
-        wordListBtn.style.display = "none";
-        timerDisplay.style.display = "none";
-        waitingMessage.style.display = "block";
-        resetStoredStudyTime();
-    } else if (testInfo.phase === "test") {
-        actionBtn.innerText = "テスト開始";
-        actionBtn.dataset.mode = "test";
-        wordListBtn.style.display = "none"; // テスト中は単語一覧を見せない
+        if (testInfo.phase !== "practice" && testInfo.phase !== "test") {
+            actionBtn.dataset.mode = "waiting";
+            actionBtn.style.display = "none";
+            wordListBtn.style.display = "none";
+            timerDisplay.style.display = "none";
+            waitingMessage.style.display = "block";
+            resetStoredStudyTime();
+        } else if (testInfo.phase === "test") {
+            actionBtn.innerText = "テスト開始";
+            actionBtn.dataset.mode = "test";
+            wordListBtn.style.display = "none"; // テスト中は単語一覧を見せない
 
-        if (hasTakenTest) {
-            actionBtn.disabled = true;
-            thanksMessage.style.display = "block";
+            if (hasTakenTest) {
+                actionBtn.disabled = true;
+                thanksMessage.style.display = "block";
+            }
+        } else {
+            actionBtn.innerText = "練習開始";
+            actionBtn.dataset.mode = "practice";
         }
-    } else {
-        actionBtn.innerText = "練習開始";
-        actionBtn.dataset.mode = "practice";
     }
-}
 
-// 残り時間を10分に戻して、保存されている値も消す（待機中に使う）
-function resetStoredStudyTime() {
-    if (studyTimer) clearInterval(studyTimer);
-    timeLeft = TOTAL_TIME_MS;
-    localStorage.removeItem(getTimeStorageKey());
-}
-
-function startMainAction() {
-    const mode = document.getElementById("btn-start-action").dataset.mode;
-    if (mode === "waiting") return; // 待機中は何も始めない
-    if (mode === "test") {
-        if (hasTakenTest) return; // 開発者ツールなどから押されても受験させない
-        initTest();
-    } else {
-        initPractice();
+    // 残り時間を30分に戻して、保存されている値も消す（待機中に使う）
+    function resetStoredStudyTime() {
+        stopStudyTimer();
+        timeLeft = TOTAL_TIME_MS;
+        localStorage.removeItem(getTimeStorageKey());
     }
-}
+
+    function startMainAction() {
+        const mode = document.getElementById("btn-start-action").dataset.mode;
+        if (mode === "waiting") return; // 待機中は何も始めない
+        if (mode === "test") {
+            if (hasTakenTest) return; // 開発者ツールなどから押されても受験させない
+            initTest();
+        } else {
+            initPractice();
+        }
+    }
 
     // -------------------------------------------------------------------------
     // 単語一覧画面の制御
@@ -706,7 +872,8 @@ function startMainAction() {
             
             let mediaHtml = "";
             if (userTeam === "A") {
-                mediaHtml = `<div class="word-media"><img src="${w.imageUrl || ''}" class="media-image" alt="イメージ"></div>`;
+                // 画像グループ: 画像と拡大ボタンを表示(画像が無い単語は何も表示しない)
+                mediaHtml = `<div class="word-media">${buildZoomableImageHtml(w.imageUrl, "media-image", "")}</div>`;
             } else if (userTeam === "B") {
                 mediaHtml = `
                     <div class="word-media">
@@ -780,6 +947,20 @@ function startMainAction() {
         area.appendChild(qBox);
     }
 
+    // 並び替え問題(t=2)の問題文を、見やすい形に整える
+    // 仕組み:
+    //   1. 最初の改行までを「指示文」とし、残りを空白・改行で区切って「番号付き単語」のリストにする
+    //   2. 「指示文 + 空行 + 1行1単語」の形につなぎ直す
+    //   ※ 改行の少ない古い形式の問題でも、新しい形式でも、同じ見た目になる
+    function formatRearrangeQuestionText(questionText) {
+        const firstLineBreakIndex = questionText.indexOf("\n");
+        if (firstLineBreakIndex === -1) return questionText;
+
+        const instructionText = questionText.substring(0, firstLineBreakIndex);
+        const numberedWordList = questionText.substring(firstLineBreakIndex).trim().split(/\s+/);
+        return instructionText + "\n\n" + numberedWordList.join("\n");
+    }
+
     // 並び替え問題(t=2)の回答UIを組み立てる。answerFnNameは"checkPracticeAnswer"または"nextTestQuestion"
     function buildRearrangeAnswerUI(shuffledWords, answerFnName) {
         let options = "";
@@ -839,8 +1020,9 @@ function startMainAction() {
 
             const shuffled = shuffle([...originalSubWords]);
             
-            q = `Rearrange the following words into the original sentence order, then select the numbers of the 2nd word and the 4th word (in the correct order) from the list below.\n` + 
-                shuffled.map((w, i) => `${i+1}-${w}`).join("  ");
+            // 指示文のあとに空行を入れ、単語は1行に1つずつ表示する
+            q = `Rearrange the following words into the original sentence order, then select the numbers of the 2nd word and the 4th word (in the correct order) from the list below.\n\n` + 
+                shuffled.map((w, i) => `${i+1}-${w}`).join("\n");
             
             s = shuffled;
             
@@ -907,7 +1089,7 @@ function startMainAction() {
         
         let mediaHtml = "";
         if (userTeam === "A" && q.targetWord.imageUrl) {
-            mediaHtml = `<div class="explanation-media"><p>イメージ画像</p><img src="${q.targetWord.imageUrl}" style="max-width:150px; border-radius:8px;"></div>`;
+            mediaHtml = `<div class="explanation-media"><p>イメージ画像</p>${buildZoomableImageHtml(q.targetWord.imageUrl, "", "max-width:150px; border-radius:8px;")}</div>`;
         } else if (userTeam === "B" && q.targetWord.audioUrl) {
             mediaHtml = `
                 <div class="explanation-media">
@@ -939,7 +1121,7 @@ function startMainAction() {
 
     function initTest() {
         // テスト中は時間制限なし(研究用の練習時間とは別物のため)
-        if (studyTimer) clearInterval(studyTimer);
+        stopStudyTimer();
 
         testQuestions = testInfo.questions.slice(0, testInfo.questionCount);
         currentTestIndex = 0;
@@ -961,7 +1143,9 @@ function startMainAction() {
         const qBox = document.createElement("div");
         qBox.className = "question-box";
         
-        let html = `<div class="question-text">Q${currentTestIndex + 1}: ${q.q}</div>`;
+        // 並び替え問題は、改行を整えてから表示する
+        const questionText = (q.t === 2) ? formatRearrangeQuestionText(q.q) : q.q;
+        let html = `<div class="question-text">Q${currentTestIndex + 1}: ${questionText}</div>`;
 
         if (q.t === 4) {
             html += `
@@ -999,7 +1183,7 @@ function startMainAction() {
     }
 
     async function submitTestAnswers() {
-        clearInterval(studyTimer);
+        stopStudyTimer();
         
         // テスト採点
         let correctCount = 0;
@@ -1044,8 +1228,8 @@ function startMainAction() {
     }
 
     function finishStudySession() {
-        clearInterval(studyTimer);
-        alert("10分間の学習が終了しました。結果を送信して終了します。");
+        stopStudyTimer();
+        alert(TOTAL_TIME_MINUTES + "分間の学習が終了しました。結果を送信して終了します。");
         
         fetch(GAS_API_URL, {
             method: "POST",
@@ -1065,7 +1249,7 @@ function startMainAction() {
     }
 
     function goToTitle() {
-        clearInterval(studyTimer);
+        stopStudyTimer();
         changeScreen("screen-title");
         // 自動再ログインを防止するため、ログイン用ボタンを「再読み込み」に変更可能
         document.getElementById("btn-start-app").innerText = "再接続・再ログイン";
